@@ -1,0 +1,1431 @@
+---
+title: "Mutational Signature Analysis"
+output: html_notebook
+---
+### 1. Package loading
+```{r}
+library(dplyr)
+library(biomaRt)
+library(ggplot2)
+library(gridExtra)
+library(tidyverse)
+```
+
+### 2. Correlation between Original Gene List and Mutational Singature
+#### 2.1 Data loading
+```{r}
+#
+# PCAWG RNA-seq data
+#
+aliquots.RNA = read.table(file = 'rnaseq_metadata.tsv', sep = '\t', header = T, quote = "", comment.char = "")
+rna.data = read.table("tophat_star_fpkm_uq.v2_aliquot_gl_Ovary-AdenoCA.tsv",sep="\t",check.names=F)
+rna.data = rna.data[-1,] #remove the first row
+colnames(rna.data) = aliquots.RNA[match(names(rna.data),aliquots.RNA[,"aliquot_id"]),"icgc_specimen_id"] #change the colnames from aliquot_id to icgc_specimen_id
+rownames(rna.data) = sub("\\.\\d+", "", rownames(rna.data)) #remove the decimal point
+temp  = mutate_all(rna.data, function(x) as.numeric(as.character(x)))
+rna.data = temp
+
+
+#
+# Mutational Signature data (SBS, ID or DBS)
+#
+mutsig.data_SBS = read.table("PCAWG_sigProfiler_SBS_signatures_in_samples.csv",sep=",",header=T,quote="") %>%
+  filter(Cancer.Types == 'Ovary-AdenoCA')
+mutsig.data_ID = read.table("PCAWG_sigProfiler_ID_signatures_in_samples.csv",sep=",",header=T,quote="") %>%
+  filter(Cancer.Types == 'Ovary-AdenoCA')
+mutsig.data_DBS = read.table("PCAWG_sigProfiler_DBS_signatures_in_samples.csv",sep=",",header=T,quote="") %>%
+  filter(Cancer.Types == 'Ovary-AdenoCA')
+
+
+```
+
+#### 2.2 Linear regression analysis
+```{r}
+###
+### SBS
+###
+mutsig.data = mutsig.data_SBS
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+      filters=c('ensembl_gene_id'),
+      values=list(PvalueTable$ENSEMBL),
+      mart=grch37)
+PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_SBS.txt",sep="\t",quote=F,row.names=F)
+
+
+
+
+###
+### ID
+###
+mutsig.data = mutsig.data_ID
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+      filters=c('ensembl_gene_id'),
+      values=list(PvalueTable$ENSEMBL),
+      mart=grch37)
+PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_ID.txt",sep="\t",quote=F,row.names=F)
+
+
+
+###
+### DBS
+###
+mutsig.data = mutsig.data_DBS
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+      filters=c('ensembl_gene_id'),
+      values=list(PvalueTable$ENSEMBL),
+      mart=grch37)
+PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_DBS.txt",sep="\t",quote=F,row.names=F)
+```
+
+#### 2.3 Analyze the count of the mutational signatures and Plot the result (Original)
+```{r}
+# Analyze the count of the mutational signatures
+
+###
+### SBS
+###
+SBS_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_SBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+SBS_seq <- SBS_MutSig_Count_0.05[['Mutational.Signature']]
+
+SBS_MutSig_Count_0.05 <- SBS_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = SBS_seq))
+
+###
+### ID
+###
+ID_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_ID.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+ID_seq <- ID_MutSig_Count_0.05[['Mutational.Signature']]
+
+ID_MutSig_Count_0.05 <- ID_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = ID_seq))
+
+###
+### DBS
+###
+DBS_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_DBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+DBS_seq <- DBS_MutSig_Count_0.05[['Mutational.Signature']]
+
+DBS_MutSig_Count_0.05 <- DBS_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = DBS_seq))
+
+
+
+## Plot them
+SBS_0.05 <- ggplot(SBS_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 8000) +
+  ggtitle("SBS p-value < 0.05")
+SBS_0.05
+
+ID_0.05 <- ggplot(ID_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 8000) +
+  ggtitle("ID p-value < 0.05")
+ID_0.05
+
+DBS_0.05 <- ggplot(DBS_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 8000) +
+  ggtitle("DBS p-value < 0.05")
+DBS_0.05
+
+
+grid.arrange(SBS_0.05, ID_0.05, DBS_0.05, nrow=3)
+
+```
+
+# Intersect with Germline gene list and rerun the correalation
+### 3. Correlation between Germline Gene List and Mutational Singature
+#### 3.1 Germline data loading
+```{r}
+#
+# Germline Gene list loading (Germline)
+#
+multixcan.genes = read.table("MultiXcan_AllHistotypes_genes.txt") #total: 123
+magma.genes = read.table("MAGMA_gene_list.txt") #total: 68
+chrommagma.genes = read.table("chromMAGMA_gene_list.txt") #total: 155
+```
+
+#### 3.2 MultiXcan X PCAWG RNA-seq
+#### 3.2.1 Linear regression analysis (MultiXcan)
+```{r}
+# Reload the PCAWG RNA-seq data
+aliquots.RNA = read.table(file = 'rnaseq_metadata.tsv', sep = '\t', header = T, quote = "", comment.char = "")
+rna.data = read.table("tophat_star_fpkm_uq.v2_aliquot_gl_Ovary-AdenoCA.tsv",sep="\t",check.names=F)
+rna.data = rna.data[-1,] #remove the first row
+colnames(rna.data) = aliquots.RNA[match(names(rna.data),aliquots.RNA[,"aliquot_id"]),"icgc_specimen_id"] #change the colnames from aliquot_id to icgc_specimen_id
+rownames(rna.data) = sub("\\.\\d+", "", rownames(rna.data)) #remove the decimal point
+temp  = mutate_all(rna.data, function(x) as.numeric(as.character(x)))
+rna.data = temp
+
+# Intersect with MultiXcan
+rna.susgenes = rna.data[rownames(rna.data)%in%multixcan.genes[,1],]
+temp  = mutate_all(rna.susgenes, function(x) as.numeric(as.character(x)))
+rna.susgenes = temp
+rna.data = rna.susgenes
+
+
+###
+### SBS
+###
+mutsig.data = mutsig.data_SBS
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+ grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+       filters=c('ensembl_gene_id'),
+       values=list(PvalueTable$ENSEMBL),
+       mart=grch37)
+ PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+ PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_MultiXcan_SBS.txt",sep="\t",quote=F,row.names=F)
+
+
+
+###
+### ID
+###
+mutsig.data = mutsig.data_ID
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+ grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+       filters=c('ensembl_gene_id'),
+       values=list(PvalueTable$ENSEMBL),
+       mart=grch37)
+ PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+ PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_MultiXcan_ID.txt",sep="\t",quote=F,row.names=F)
+
+
+###
+### DBS
+###
+mutsig.data = mutsig.data_DBS
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+ grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+       filters=c('ensembl_gene_id'),
+       values=list(PvalueTable$ENSEMBL),
+       mart=grch37)
+ PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+ PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_MultiXcan_DBS.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+
+#### 3.2.2 Analyze the count of the mutational signatures and Plot the result (MultiXcan)
+```{r}
+# Analyze the count of the mutational signatures
+
+###
+### SBS
+###
+SBS_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_MultiXcan_SBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+SBS_seq <- SBS_MutSig_Count_0.05[['Mutational.Signature']]
+
+SBS_MutSig_Count_0.05 <- SBS_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = SBS_seq))
+
+###
+### ID
+###
+ID_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_MultiXcan_ID.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+ID_seq <- ID_MutSig_Count_0.05[['Mutational.Signature']]
+
+ID_MutSig_Count_0.05 <- ID_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = ID_seq))
+
+###
+### DBS
+###
+DBS_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_MultiXcan_DBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+DBS_seq <- DBS_MutSig_Count_0.05[['Mutational.Signature']]
+
+DBS_MutSig_Count_0.05 <- DBS_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = DBS_seq))
+
+
+
+## Plot them
+SBS_0.05 <- ggplot(SBS_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 30) +
+  labs(y = "Total Count", x = NULL)
+SBS_0.05
+
+ID_0.05 <- ggplot(ID_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 30) +
+  labs(y = "Total Count", x = NULL)
+ID_0.05
+
+DBS_0.05 <- ggplot(DBS_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 30) +
+  labs(y = "Total Count", x = NULL)
+DBS_0.05
+
+
+grid.arrange(SBS_0.05, ID_0.05, DBS_0.05, nrow=3)
+```
+
+#### 3.3 MAGMA X PCAWG RNA-seq
+#### 3.3.1 Linear regression analysis (MAGMA)
+```{r}
+# Reload the PCAWG RNA-seq data
+aliquots.RNA = read.table(file = 'rnaseq_metadata.tsv', sep = '\t', header = T, quote = "", comment.char = "")
+rna.data = read.table("tophat_star_fpkm_uq.v2_aliquot_gl_Ovary-AdenoCA.tsv",sep="\t",check.names=F)
+rna.data = rna.data[-1,] #remove the first row
+colnames(rna.data) = aliquots.RNA[match(names(rna.data),aliquots.RNA[,"aliquot_id"]),"icgc_specimen_id"] #change the colnames from aliquot_id to icgc_specimen_id
+rownames(rna.data) = sub("\\.\\d+", "", rownames(rna.data)) #remove the decimal point
+temp  = mutate_all(rna.data, function(x) as.numeric(as.character(x)))
+rna.data = temp
+
+# Intersect with MAGMA
+rna.susgenes = rna.data[rownames(rna.data)%in%magma.genes[,1],]
+temp  = mutate_all(rna.susgenes, function(x) as.numeric(as.character(x)))
+rna.susgenes = temp
+rna.data = rna.susgenes
+
+###
+### SBS
+###
+mutsig.data = mutsig.data_SBS
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+ grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+       filters=c('ensembl_gene_id'),
+       values=list(PvalueTable$ENSEMBL),
+       mart=grch37)
+ PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+ PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_MAGMA_SBS.txt",sep="\t",quote=F,row.names=F)
+
+
+
+
+###
+### ID
+###
+mutsig.data = mutsig.data_ID
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+ grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+       filters=c('ensembl_gene_id'),
+       values=list(PvalueTable$ENSEMBL),
+       mart=grch37)
+ PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+ PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_MAGMA_ID.txt",sep="\t",quote=F,row.names=F)
+
+
+###
+### DBS
+###
+mutsig.data = mutsig.data_DBS
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+ grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+       filters=c('ensembl_gene_id'),
+       values=list(PvalueTable$ENSEMBL),
+       mart=grch37)
+ PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+ PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_MAGMA_DBS.txt",sep="\t",quote=F,row.names=F)
+
+
+```
+
+#### 3.3.2 Analyze the count of the mutational signatures and Plot the result (MAGMA)
+```{r}
+# Analyze the count of the mutational signatures
+
+###
+### SBS
+###
+SBS_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_MAGMA_SBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+SBS_seq <- SBS_MutSig_Count_0.05[['Mutational.Signature']]
+
+SBS_MutSig_Count_0.05 <- SBS_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = SBS_seq))
+
+###
+### ID
+###
+ID_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_MAGMA_ID.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+ID_seq <- ID_MutSig_Count_0.05[['Mutational.Signature']]
+
+ID_MutSig_Count_0.05 <- ID_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = ID_seq))
+
+###
+### DBS
+###
+DBS_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_MAGMA_DBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+DBS_seq <- DBS_MutSig_Count_0.05[['Mutational.Signature']]
+
+DBS_MutSig_Count_0.05 <- DBS_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = DBS_seq))
+
+
+
+## Plot them
+SBS_0.05 <- ggplot(SBS_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 30) +
+  labs(y = "Total Count", x = NULL)
+  #ggtitle("SBS p-value < 0.05")
+SBS_0.05
+
+ID_0.05 <- ggplot(ID_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 30) +
+  labs(y = "Total Count", x = NULL)
+  #ggtitle("ID p-value < 0.05")
+ID_0.05
+
+DBS_0.05 <- ggplot(DBS_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 30) +
+  labs(y = "Total Count", x = NULL)
+  #ggtitle("DBS p-value < 0.05")
+DBS_0.05
+
+
+grid.arrange(SBS_0.05, ID_0.05, DBS_0.05, nrow=3)
+```
+
+#### 3.4 chromMAGMA X PCAWG RNA-seq
+#### 3.4.1 Linear regression analysis (chromMAGMA)
+```{r}
+# Reload the PCAWG RNA-seq data
+aliquots.RNA = read.table(file = 'rnaseq_metadata.tsv', sep = '\t', header = T, quote = "", comment.char = "")
+rna.data = read.table("tophat_star_fpkm_uq.v2_aliquot_gl_Ovary-AdenoCA.tsv",sep="\t",check.names=F)
+rna.data = rna.data[-1,] #remove the first row
+colnames(rna.data) = aliquots.RNA[match(names(rna.data),aliquots.RNA[,"aliquot_id"]),"icgc_specimen_id"] #change the colnames from aliquot_id to icgc_specimen_id
+rownames(rna.data) = sub("\\.\\d+", "", rownames(rna.data)) #remove the decimal point
+temp  = mutate_all(rna.data, function(x) as.numeric(as.character(x)))
+rna.data = temp
+
+# Intersect with chromMAGMA
+rna.susgenes = rna.data[rownames(rna.data)%in%chrommagma.genes[,1],]
+temp  = mutate_all(rna.susgenes, function(x) as.numeric(as.character(x)))
+rna.susgenes = temp
+rna.data = rna.susgenes
+
+###
+### SBS
+###
+mutsig.data = mutsig.data_SBS
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+                     filters=c('ensembl_gene_id'),
+                     values=list(PvalueTable$ENSEMBL),
+                     mart=grch37)
+PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_chromMAGMA_SBS.txt",sep="\t",quote=F,row.names=F)
+
+
+
+
+###
+### ID
+###
+mutsig.data = mutsig.data_ID
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+                     filters=c('ensembl_gene_id'),
+                     values=list(PvalueTable$ENSEMBL),
+                     mart=grch37)
+PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_chromMAGMA_ID.txt",sep="\t",quote=F,row.names=F)
+
+
+
+###
+### DBS
+###
+mutsig.data = mutsig.data_DBS
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+#
+# Run lm
+#
+FinalResult = data.frame(matrix(ncol = nrow(rna.data), nrow = nrow(mutsig.data)))
+PvalueTable = c()
+colnames(FinalResult) = rownames(rna.data)
+rownames(FinalResult) = rownames(mutsig.data)
+
+for (i in 1:nrow(rna.data)){
+  print(i)
+for (j in 1:nrow(mutsig.data)){
+
+regdata = merge(t(mutsig.data[j,]),t(rna.data[i,]),by='row.names')
+regdata = regdata[,-1]
+colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+gene.fit = lm(Gene~., data=regdata)
+
+if (nrow(summary(gene.fit)$coefficients)<2) { 
+FinalResult[j,i] = NA
+}else{
+pvalue = summary(gene.fit)$coefficients[2,4]
+beta = summary(gene.fit)$coefficients[2,1]
+FinalResult[j,i] = pvalue
+PvalueTable = rbind(PvalueTable,c(rownames(rna.data)[i],rownames(mutsig.data)[j],beta,pvalue))
+}
+
+
+}
+}
+
+
+colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+PvalueTable = as.data.frame(PvalueTable)
+grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+      filters=c('ensembl_gene_id'),
+      values=list(PvalueTable$ENSEMBL),
+      mart=grch37)
+PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+# Store the table into a file
+PvalueTable <- PvalueTable %>%
+  filter(pvalue < 0.05)
+write.table(PvalueTable, "pvalue_table_PCAWG.ovary_chromMAGMA_DBS.txt",sep="\t",quote=F,row.names=F)
+
+
+```
+
+#### 3.4.2 Analyze the count of the mutational signatures and Plot the result (chromMAGMA)
+```{r}
+# Analyze the count of the mutational signatures
+
+###
+### SBS
+###
+SBS_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_chromMAGMA_SBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+SBS_seq <- SBS_MutSig_Count_0.05[['Mutational.Signature']]
+
+SBS_MutSig_Count_0.05 <- SBS_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = SBS_seq))
+
+###
+### ID
+###
+ID_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_chromMAGMA_ID.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+ID_seq <- ID_MutSig_Count_0.05[['Mutational.Signature']]
+
+ID_MutSig_Count_0.05 <- ID_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = ID_seq))
+
+###
+### DBS
+###
+DBS_MutSig_Count_0.05 <- read.table("pvalue_table_PCAWG.ovary_chromMAGMA_DBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  group_by(Mutational.Signature) %>%
+  summarise(total_count=n()) %>%
+  arrange(desc(total_count))
+
+DBS_seq <- DBS_MutSig_Count_0.05[['Mutational.Signature']]
+
+DBS_MutSig_Count_0.05 <- DBS_MutSig_Count_0.05 %>%
+  mutate(Mutational.Signature = factor(Mutational.Signature, levels = DBS_seq))
+
+
+
+## Plot them
+SBS_0.05 <- ggplot(SBS_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 30) +
+  labs(y = "Total Count", x = NULL)
+SBS_0.05
+
+ID_0.05 <- ggplot(ID_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 30) +
+  labs(y = "Total Count", x = NULL)
+ID_0.05
+
+DBS_0.05 <- ggplot(DBS_MutSig_Count_0.05, aes(x=Mutational.Signature, y=total_count)) + 
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  ylim(0, 30) +
+  labs(y = "Total Count", x = NULL)
+DBS_0.05
+
+ 
+grid.arrange(SBS_0.05, ID_0.05, DBS_0.05, nrow=3)
+```
+
+### 4. Permutation
+```{r}
+#
+# Assign variables
+#
+
+## Input (select one gene list and one mutational signature)
+GeneList <- "MultiXcan"
+#GeneList <- "MAGMA"
+#GeneList <- "chromMAGMA"
+MutSig <- "SBS"
+#MutSig <- "ID"
+#MutSig <- "DBS"
+
+Loop_Start <- 1
+Loop_End <- 500
+
+
+
+
+## Output
+OutFile_1 = paste("/home/laip/Germline_Somatic/result/MutSig_Permutation/", GeneList, "_", MutSig, "_", Loop_Start, "_", Loop_End, ".txt", sep="")
+OutFile_2 = paste("/home/laip/Germline_Somatic/result/MutSig_Permutation/", GeneList, "_", MutSig, "_", Loop_Start, "_", Loop_End, "_sum.txt", sep="")
+
+
+
+#
+# Load the packages
+#
+
+library(dplyr)
+library(biomaRt)
+library(ggplot2)
+
+
+
+#
+# PCAWG RNA-seq data
+#
+
+aliquots.RNA = read.table(file = '/home/laip/Germline_Somatic/data/rnaseq_metadata.tsv', sep = '\t', header = T, quote = "", comment.char = "")
+rna.data = read.table("/home/laip/Germline_Somatic/data/tophat_star_fpkm_uq.v2_aliquot_gl_Ovary-AdenoCA.tsv",sep="\t",check.names=F)
+rna.data = rna.data[-1,] #remove the first row
+colnames(rna.data) = aliquots.RNA[match(names(rna.data),aliquots.RNA[,"aliquot_id"]),"icgc_specimen_id"] #change the colnames from aliquot_id to icgc_specimen_id
+rownames(rna.data) = sub("\\.\\d+", "", rownames(rna.data)) #remove the decimal point
+temp  = mutate_all(rna.data, function(x) as.numeric(as.character(x)))
+rna.data = temp
+
+
+
+
+#
+# Mutational Signature data (SBS, ID or DBS)
+#
+
+if (GeneList == "MultiXcan") {
+  genes_selected <-  123
+  #multixcan.genes = read.table("/home/laip/Germline_Somatic/data/MultiXcan_AllHistotypes_genes.txt") #total: 123
+  
+  if (MutSig == "SBS") {
+    mutsig.data = read.table("/home/laip/Germline_Somatic/data/PCAWG_sigProfiler_SBS_signatures_in_samples.csv",sep=",",header=T,quote="") #SBS
+    analysis_sum = 77 
+  } else if (MutSig == "ID") {
+    mutsig.data = read.table("/home/laip/Germline_Somatic/data/PCAWG_sigProfiler_ID_signatures_in_samples.csv",sep=",",header=T,quote="") #ID
+    analysis_sum = 48
+  } else if (MutSig == "DBS") {
+    mutsig.data = read.table("/home/laip/Germline_Somatic/data/PCAWG_sigProfiler_DBS_signatures_in_samples.csv",sep=",",header=T,quote="") #DBS
+    analysis_sum = 33
+  } else {
+    print("Please assign the required mutational signature category")
+  }
+  
+} else if (GeneList == "MAGMA") {
+  genes_selected <-  68
+  #magma.genes = read.table("/home/laip/Germline_Somatic/data/MAGMA_gene_list.txt") #total: 68
+  
+  if (MutSig == "SBS") {
+    mutsig.data = read.table("/home/laip/Germline_Somatic/data/PCAWG_sigProfiler_SBS_signatures_in_samples.csv",sep=",",header=T,quote="") #SBS
+    analysis_sum = 61
+  } else if (MutSig == "ID") {
+    mutsig.data = read.table("/home/laip/Germline_Somatic/data/PCAWG_sigProfiler_ID_signatures_in_samples.csv",sep=",",header=T,quote="") #ID
+    analysis_sum = 45
+  } else if (MutSig == "DBS") {
+    mutsig.data = read.table("/home/laip/Germline_Somatic/data/PCAWG_sigProfiler_DBS_signatures_in_samples.csv",sep=",",header=T,quote="") #DBS
+    analysis_sum = 29
+  } else {
+    print("Please assign the required mutational signature category")
+  }
+  
+} else if  (GeneList == "chromMAGMA") {
+  genes_selected <-  155
+  #chrommagma.genes = read.table("/home/laip/Germline_Somatic/data/chromMAGMA_gene_list.txt") #total: 155
+  
+  if (MutSig == "SBS") {
+    mutsig.data = read.table("/home/laip/Germline_Somatic/data/PCAWG_sigProfiler_SBS_signatures_in_samples.csv",sep=",",header=T,quote="") #SBS
+    analysis_sum = 167
+  } else if (MutSig == "ID") {
+    mutsig.data = read.table("/home/laip/Germline_Somatic/data/PCAWG_sigProfiler_ID_signatures_in_samples.csv",sep=",",header=T,quote="") #ID
+    analysis_sum = 108
+  } else if (MutSig == "DBS") {
+    mutsig.data = read.table("/home/laip/Germline_Somatic/data/PCAWG_sigProfiler_DBS_signatures_in_samples.csv",sep=",",header=T,quote="") #DBS
+    analysis_sum = 79
+  } else {
+    print("Please assign the required mutational signature category")
+  }
+  
+} else {
+  print("Please assign the required gene list")
+}
+
+mutsig.data = mutsig.data[mutsig.data$Cancer.Types=="Ovary-AdenoCA",]
+mutsig.data = mutsig.data[mutsig.data$Sample.Names %in% colnames(rna.data),]
+rownames(mutsig.data) = mutsig.data$Sample.Names
+mutsig.data = mutsig.data[,c(-1,-2,-3)]
+mutsig.data = as.data.frame(t(mutsig.data))
+temp  = mutate_all(mutsig.data, function(x) as.numeric(as.character(x)))
+mutsig.data = temp
+
+
+
+#
+# Randomly select the genes (for permutation)
+#
+
+sums_more_than_analysis_sum <- 0
+
+for (z in Loop_Start:Loop_End) {
+  # randomly select the genes
+  rna.data_selected <- sample_n(rna.data, genes_selected)
+  
+  # run linear regression model
+  FinalResult = data.frame(matrix(ncol = nrow(rna.data_selected), nrow = nrow(mutsig.data)))
+  PvalueTable = c()
+  colnames(FinalResult) = rownames(rna.data_selected)
+  rownames(FinalResult) = rownames(mutsig.data)
+  for (i in 1:nrow(rna.data_selected)){
+    for (j in 1:nrow(mutsig.data)){
+      
+      regdata = merge(t(mutsig.data[j,]),t(rna.data_selected[i,]),by='row.names')
+      regdata = regdata[,-1]
+      colnames(regdata) = c(rownames(mutsig.data)[j],"Gene")
+      gene.fit = lm(Gene~., data=regdata)
+      
+      if (nrow(summary(gene.fit)$coefficients)<2) { 
+        FinalResult[j,i] = NA
+      }else{
+        pvalue = summary(gene.fit)$coefficients[2,4]
+        beta = summary(gene.fit)$coefficients[2,1]
+        FinalResult[j,i] = pvalue
+        PvalueTable = rbind(PvalueTable,c(rownames(rna.data_selected)[i],rownames(mutsig.data)[j],beta,pvalue))
+      }
+      
+      
+    }
+  }
+  
+  # add the column names
+  colnames(PvalueTable) = c("ENSEMBL","Mutational.Signature","Beta", "pvalue")
+  PvalueTable = as.data.frame(PvalueTable)
+  
+  grch37 = useMart(biomart="ENSEMBL_MART_ENSEMBL", host="https://grch37.ensembl.org", path="/biomart/martservice", dataset="hsapiens_gene_ensembl")
+  ENSGtoSymbol = getBM(attributes=c('hgnc_symbol','ensembl_gene_id'),
+                       filters=c('ensembl_gene_id'),
+                       values=list(PvalueTable$ENSEMBL),
+                       mart=grch37)
+  PvalueTable = merge(PvalueTable,ENSGtoSymbol, by.x="ENSEMBL", by.y="ensembl_gene_id")
+  
+  PvalueTable$pvalue <- as.numeric(PvalueTable$pvalue)
+
+  # filter out the value > 0.05 and count the mutational signatures
+  MutSig_Count <- PvalueTable %>%
+    filter(pvalue < 0.05) %>%
+    group_by(Mutational.Signature) %>%
+    summarise(count = n())
+
+  
+  if (z == 1){
+    print(z)
+    name <- paste("count_", z, sep = "")
+
+    MutSig_ID <- MutSig_Count['Mutational.Signature'] %>%
+      arrange(Mutational.Signature)
+    
+    MutSig_Count <- MutSig_Count %>%
+      rename(!!name:=count)
+    
+    data4sum <- MutSig_Count[name]
+    sums <- colSums(data4sum)
+    if (sums > analysis_sum){
+      sums_more_than_analysis_sum  <- sums_more_than_analysis_sum + 1
+    }
+    
+    MutSig_merge <- merge(MutSig_ID, MutSig_Count, by = "Mutational.Signature", all = TRUE)
+    
+  } else {
+    print(z)
+    name <- paste("count_", z, sep = "")
+    
+    MutSig_Count <- MutSig_Count %>%
+      rename(!!name:=count)
+    
+    data4sum <- MutSig_Count[name]
+    sums <- colSums(data4sum)
+    if (sums > analysis_sum){
+      sums_more_than_analysis_sum  <- sums_more_than_analysis_sum + 1
+    }
+    
+    MutSig_merge <- merge(MutSig_merge, MutSig_Count, by = "Mutational.Signature", all = TRUE)
+    
+  }
+  
+  
+}
+
+
+
+#
+# Write out the count matrix and the count value for p_value calculation
+#
+write.table(MutSig_merge, OutFile_1, sep = "\t", quote = F, row.names = F)
+write.table(sums_more_than_analysis_sum, OutFile_2, sep = "\t", quote = F, row.names = F, col.names = F)
+
+
+
+# MAGMA_SBS_1_10000_sum.txt --> 892
+# MAGMA_ID_1_10000_sum.txt --> 434
+# MAGMA_DBS_1_10000_sum.txt --> 4566
+
+# chromMAGMA_SBS_1_10000_sum.txt --> 2
+# chromMAGMA_ID_1_10000_sum.txt --> 16
+# chromMAGMA_DBS_1_10000_sum.txt --> 572
+
+```
+
+
+# 5. Supplementary Table 6
+```{r}
+# MultiXcan
+MultiXcan_SBS_0.05 <- read.table("pvalue_table_PCAWG.ovary_MultiXcan_SBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  mutate(MutSig.Category = "SBS")
+
+MultiXcan_ID_0.05 <- read.table("pvalue_table_PCAWG.ovary_MultiXcan_ID.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  mutate(MutSig.Category = "ID")
+
+MultiXcan_DBS_0.05 <- read.table("pvalue_table_PCAWG.ovary_MultiXcan_DBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  mutate(MutSig.Category = "DBS")
+
+MultiXcan_0.05 <- bind_rows(list(MultiXcan_SBS_0.05, MultiXcan_ID_0.05, MultiXcan_DBS_0.05)) %>%
+  mutate(Germline.List = "MultiXcan")
+
+
+# MAGMA
+MAGMA_SBS_0.05 <- read.table("pvalue_table_PCAWG.ovary_MAGMA_SBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  mutate(MutSig.Category = "SBS")
+
+MAGMA_ID_0.05 <- read.table("pvalue_table_PCAWG.ovary_MAGMA_ID.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  mutate(MutSig.Category = "ID")
+
+MAGMA_DBS_0.05 <- read.table("pvalue_table_PCAWG.ovary_MAGMA_DBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  mutate(MutSig.Category = "DBS")
+
+MAGMA_0.05 <- bind_rows(list(MAGMA_SBS_0.05, MAGMA_ID_0.05, MAGMA_DBS_0.05)) %>%
+  mutate(Germline.List = "MAGMA")
+
+
+# chromMAGMA
+chromMAGMA_SBS_0.05 <- read.table("pvalue_table_PCAWG.ovary_chromMAGMA_SBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  mutate(MutSig.Category = "SBS")
+
+chromMAGMA_ID_0.05 <- read.table("pvalue_table_PCAWG.ovary_chromMAGMA_ID.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  mutate(MutSig.Category = "ID")
+
+chromMAGMA_DBS_0.05 <- read.table("pvalue_table_PCAWG.ovary_chromMAGMA_DBS.txt", header = TRUE, sep="\t") %>%
+  filter(pvalue < 0.05) %>%
+  mutate(MutSig.Category = "DBS")
+
+chromMAGMA_0.05 <- bind_rows(list(chromMAGMA_SBS_0.05, chromMAGMA_ID_0.05, chromMAGMA_DBS_0.05)) %>%
+  mutate(Germline.List = "chromMAGMA")
+
+
+
+all_germ_list_pvalue_table_0.05 <- bind_rows(list(MultiXcan_0.05, MAGMA_0.05, chromMAGMA_0.05)) %>%
+  relocate(Germline.List) %>%
+  relocate(MutSig.Category, .after = Germline.List) %>%
+  relocate(Mutational.Signature, .after = MutSig.Category) %>%
+  relocate(Gene.Name = hgnc_symbol) %>%
+  relocate(Gene.Name, .after = ENSEMBL)
+
+write.table(all_germ_list_pvalue_table_0.05, "pvalue_table_PCAWG.ovary_all_germline_list_0.05.txt",sep="\t",quote=F,row.names=F)
+```
