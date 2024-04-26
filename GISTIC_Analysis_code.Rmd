@@ -1,0 +1,318 @@
+---
+title: "GISTIC CNV Analysis"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+### 1. Package and Data loading
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(reshape2)
+# Load GISTIC result file
+gistic_int_risk_loci <- read_tsv("gistic_coverage_risk_loci_with_annotation.txt")
+```
+
+### 2. Amplification
+##### 2.1 Amplification - Wide Peak
+```{r}
+# Load and sort data
+gistic_amp_wide_peak <- read_tsv("gistic_coverage_amp_wide_peak_with_annotation.txt") %>%
+  separate(annotation, into = c("cell_type", "state"), sep = ":", remove = FALSE) %>%
+  mutate(chr = factor(chr, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  unite(amp_region, c(chr, pos1, pos2), sep = "_", remove = FALSE) %>%
+  mutate(state = factor(state, levels = c("Active_Enhancer",
+                                          "Weak_Enhancer",
+                                          "Active_Promoter",
+                                          "Weak_Promoter",
+                                          "Transcribed",
+                                          "Active_Region",
+                                          "Insulator"))) %>%
+  mutate(cell_type = factor(cell_type, levels = c("FT", "IOSE", "HGSOC", "LGSOC", "CCOC", "EEC", "MOC")))
+
+# Build a factor vector for sorting 
+amp_wide_region_sort <- gistic_amp_wide_peak %>%
+  select(amp_region) %>%
+  unique()
+amp_wide_region_sort <- amp_wide_region_sort[['amp_region']]
+
+# Sort the amp_region according to this factor vector
+gistic_amp_wide_peak <- gistic_amp_wide_peak %>%
+  mutate(amp_region = factor(amp_region, levels = amp_wide_region_sort))
+
+#
+# Heatmap of the AMP WIDE PEAK GISTIC result
+#
+amp_gistic_wide_ori <- ggplot(gistic_amp_wide_peak, aes(x = amp_region,
+                                                    y = cell_type,
+                                                    fill = coverage_percentage)) + 
+  geom_tile(color = "black") + 
+  facet_grid(rows = vars(state), switch = "y") +
+  xlab(label = "Chromosome") + 
+  ylab(label = "Chromatin State") + 
+  scale_fill_gradient(low = "white", high = "red",
+                      breaks=c(0,0.1, 0.2, 0.3, 0.4),
+                      limits=c(0, 0.4)) + 
+  scale_y_discrete(limits = rev) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  coord_equal()
+
+amp_gistic_wide_ori
+
+##
+amp_gistic_wide_2 <- ggplot(gistic_amp_wide_peak, aes(x = cell_type,
+                                                      y = amp_region,
+                                                      fill = coverage_percentage)) + 
+  geom_tile(color = "black") + 
+  facet_grid(~ state, switch = "x") +
+  xlab(label = "Chromatin State") + 
+  ylab(label = "Chromosome") + 
+  scale_fill_gradient(low = "white", high = "red") + 
+  scale_y_discrete(limits = rev(amp_wide_region_sort)) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  coord_equal()
+
+amp_gistic_wide_2
+
+
+write.table(gistic_amp_wide_peak, "fig_4a_amp.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+##### 2.2 Amplification - Wide Peak with Risk Loci
+```{r}
+# Load and sort data
+gistic_amp_wide_peak_int_risk_loci <- read_tsv("gistic_coverage_amp_wide_peak_int_risk_loci_with_annotation.txt") %>%
+  separate(annotation, into = c("cell_type", "state"), sep = ":", remove = FALSE) %>%
+  mutate(chr = factor(chr, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  unite(amp_region, c(chr, pos1, pos2), sep = "_", remove = FALSE) %>%
+  mutate(state = factor(state, levels = c("Active_Enhancer",
+                                          "Weak_Enhancer",
+                                          "Active_Promoter",
+                                          "Weak_Promoter",
+                                          "Transcribed",
+                                          "Active_Region",
+                                          "Insulator"))) %>%
+  mutate(cell_type = factor(cell_type, levels = c("FT", "IOSE", "HGSOC", "LGSOC", "CCOC", "EEC", "MOC")))
+
+# Build a factor vector for sorting 
+amp_wide_region_risk_loci_sort <- gistic_amp_wide_peak_int_risk_loci %>%
+  select(amp_region) %>%
+  unique()
+amp_wide_region_risk_loci_sort <- amp_wide_region_risk_loci_sort[['amp_region']]
+
+# Sort the amp_region according to this factor vector
+gistic_amp_wide_peak_int_risk_loci <- gistic_amp_wide_peak_int_risk_loci %>%
+  mutate(amp_region = factor(amp_region, levels = amp_wide_region_risk_loci_sort))
+
+
+#
+# Heatmap of the AMP WIDE PEAK RISK LOCI GISTIC result
+#
+amp_gistic_wide_risk_ori <- ggplot(gistic_amp_wide_peak_int_risk_loci, 
+                               aes(x = amp_region,
+                                   y = cell_type,
+                                   fill = coverage_percentage)) + 
+  geom_tile(color = "black") + 
+  facet_grid(rows = vars(state), switch = "y") +
+  xlab(label = "Chromosome") + 
+  ylab(label = "Chromatin State") + 
+  scale_fill_gradient(low = "white", high = "red") + 
+  scale_y_discrete(limits = rev) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+  coord_equal()
+
+amp_gistic_wide_risk_ori
+
+##
+amp_gistic_wide_risk_2 <- ggplot(gistic_amp_wide_peak_int_risk_loci,
+                                 aes(x = cell_type,
+                                     y = amp_region,
+                                     fill = coverage_percentage)) + 
+  geom_tile(color = "black") + 
+  facet_grid(~ state, switch = "x") +
+  xlab(label = "Chromatin State") + 
+  ylab(label = "Chromosome") + 
+  scale_fill_gradient(low = "white", high = "red") + 
+  scale_y_discrete(limits = rev(amp_wide_region_risk_loci_sort)) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  coord_equal()
+
+amp_gistic_wide_risk_2
+
+
+write.table(gistic_amp_wide_peak_int_risk_loci, "fig_4b_amp.txt",sep="\t",quote=F,row.names=F)
+```
+### 3. Deletion
+##### 3.1 Deletion - Wide Peak
+```{r}
+# Load and sort data
+gistic_del_wide_peak <- read_tsv("gistic_coverage_del_wide_peak_with_annotation.txt") %>%
+  separate(annotation, into = c("cell_type", "state"), sep = ":", remove = FALSE) %>%
+  mutate(chr = factor(chr, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  unite(del_region, c(chr, pos1, pos2), sep = "_", remove = FALSE) %>%
+  mutate(state = factor(state, levels = c("Active_Enhancer",
+                                          "Weak_Enhancer",
+                                          "Active_Promoter",
+                                          "Weak_Promoter",
+                                          "Transcribed",
+                                          "Active_Region",
+                                          "Insulator"))) %>%
+  mutate(cell_type = factor(cell_type, levels = c("FT", "IOSE", "HGSOC", "LGSOC", "CCOC", "EEC", "MOC")))
+
+# Build a factor vector for sorting 
+del_wide_region_sort <- gistic_del_wide_peak %>%
+  select(del_region) %>%
+  unique()
+del_wide_region_sort <- del_wide_region_sort[['del_region']]
+
+# Sort the del_region according to this factor vector
+gistic_del_wide_peak <- gistic_del_wide_peak %>%
+  mutate(del_region = factor(del_region, levels = del_wide_region_sort))
+
+#
+# Heatmap of the DEL WIDE PEAK GISTIC result
+#
+del_gistic_wide_ori <- ggplot(gistic_del_wide_peak, aes(x = del_region,
+                                                    y = cell_type,
+                                                    fill = coverage_percentage)) + 
+  geom_tile(color = "black") + 
+  facet_grid(rows = vars(state), switch = "y") +
+  xlab(label = "Chromosome") + 
+  ylab(label = "Chromatin State") + 
+  scale_fill_gradient(low = "white", high = "red") + 
+  scale_y_discrete(limits = rev) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  coord_equal()
+
+del_gistic_wide_ori
+
+del_gistic_wide_2 <- ggplot(gistic_del_wide_peak, aes(x = cell_type,
+                                                    y = del_region,
+                                                    fill = coverage_percentage)) + 
+  geom_tile(color = "black") + 
+  facet_grid(~ state, switch = "x") +
+  xlab(label = "Chromatin State") + 
+  ylab(label = "Chromosome") + 
+  scale_fill_gradient(low = "white", high = "red") + 
+  scale_y_discrete(limits = rev(del_wide_region_sort)) +
+  coord_equal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+del_gistic_wide_2
+
+write.table(gistic_del_wide_peak, "fig_4a_del.txt",sep="\t",quote=F,row.names=F)
+```
+
+##### 3.2 Deletion - Wide Peak with Risk Loci
+```{r}
+# Load and sort data
+gistic_del_wide_peak_int_risk_loci <- read_tsv("gistic_coverage_del_wide_peak_int_risk_loci_with_annotation.txt")%>%
+  separate(annotation, into = c("cell_type", "state"), sep = ":", remove = FALSE) %>%
+  mutate(chr = factor(chr, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  unite(del_region, c(chr, pos1, pos2), sep = "_", remove = FALSE) %>%
+  mutate(state = factor(state, levels = c("Active_Enhancer",
+                                          "Weak_Enhancer",
+                                          "Active_Promoter",
+                                          "Weak_Promoter",
+                                          "Transcribed",
+                                          "Active_Region",
+                                          "Insulator"))) %>%
+  mutate(cell_type = factor(cell_type, levels = c("FT", "IOSE", "HGSOC", "LGSOC", "CCOC", "EEC", "MOC")))
+
+# Build a factor vector for sorting 
+del_wide_region_risk_loci_sort <- gistic_del_wide_peak_int_risk_loci %>%
+  select(del_region) %>%
+  unique()
+del_wide_region_risk_loci_sort <- del_wide_region_risk_loci_sort[['del_region']]
+
+# Sort the del_region according to this factor vector
+gistic_del_wide_peak_int_risk_loci <- gistic_del_wide_peak_int_risk_loci %>%
+  mutate(del_region = factor(del_region, levels = del_wide_region_risk_loci_sort))
+
+
+#
+# Heatmap of the AMP WIDE PEAK RISK LOCI GISTIC result
+#
+del_gistic_wide_risk_ori <- ggplot(gistic_del_wide_peak_int_risk_loci, aes(x = del_region,
+                                                    y = cell_type,
+                                                    fill = coverage_percentage)) + 
+  geom_tile(color = "black") + 
+  facet_grid(rows = vars(state), switch = "y") +
+  xlab(label = "Chromosome") + 
+  ylab(label = "Chromatin State") + 
+  scale_fill_gradient(low = "white", high = "red") +
+  scale_y_discrete(limits = rev) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  coord_equal()
+
+del_gistic_wide_risk_ori
+
+
+del_gistic_wide_risk_2 <- ggplot(gistic_del_wide_peak_int_risk_loci, aes(x = cell_type,
+                                                                       y = del_region,
+                                                                       fill = coverage_percentage)) + 
+  geom_tile(color = "black") + 
+  facet_grid(~ state, switch = "x") +
+  xlab(label = "Chromatin State") + 
+  ylab(label = "Chromosome") + 
+  scale_fill_gradient(low = "white", high = "red") + 
+  scale_y_discrete(limits = rev(del_wide_region_risk_loci_sort))+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + 
+  coord_equal()
+
+del_gistic_wide_risk_2
+
+
+write.table(gistic_del_wide_peak_int_risk_loci, "fig_4b_del.txt",sep="\t",quote=F,row.names=F)
+```
+
+### 4. Show AMP & DEL wide peak result
+
+```{r}
+library("gridExtra")  
+grid.arrange(amp_gistic_wide_ori, del_gistic_wide_ori, ncol=2)
+```
+
+
+
+```{r}
+library("gridExtra")  
+grid.arrange(amp_gistic_wide_2, del_gistic_wide_2, nrow=2)
+```
+
+### 5. Show AMP & DEL wide peak X germline risk loci result
+```{r}
+library("gridExtra")  
+grid.arrange(amp_gistic_wide_risk_ori, del_gistic_wide_risk_ori, ncol=2)
+```
+
+```{r}
+library("gridExtra")  
+grid.arrange(amp_gistic_wide_risk_2, del_gistic_wide_risk_2, nrow=2)
+```
+### 6. Summarize the data into supplementary tables
+```{r}
+gistic_amp <- read.table("gistic_identified_amp.txt", header = TRUE, sep="\t") %>%
+  separate(wide.peak.boundaries, into = c("Chromosome", "Region"), sep = ":") %>%
+  separate(Region, into = c("Start", "End"), sep = "-") %>%
+  mutate(CNV.Category = "Ampification") %>%
+  mutate(Chromosome = factor(Chromosome, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  arrange(Chromosome)
+
+gistic_del <- read.table("gistic_identified_del.txt", header = TRUE, sep="\t") %>%
+  separate(wide.peak.boundaries, into = c("Chromosome", "Region"), sep = ":") %>%
+  separate(Region, into = c("Start", "End"), sep = "-") %>%
+  mutate(CNV.Category = "Deletion") %>%
+  mutate(Chromosome = factor(Chromosome, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  arrange(Chromosome)
+
+gistic_amp_del <- bind_rows(list(gistic_amp, gistic_del)) %>%
+  relocate(CNV.Category) %>%
+  relocate(Cytoband = cytoband, .after = End) %>%
+  relocate(q.value, .after = Cytoband) %>%
+  relocate(Residual.q.value = residual.q.value, .after = q.value)
+
+  
+write.table(gistic_amp_del, "gistic_amp_del_merged.txt",sep="\t",quote=F,row.names=F)
+```
