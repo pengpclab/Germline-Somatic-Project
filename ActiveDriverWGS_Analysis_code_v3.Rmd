@@ -1,0 +1,1031 @@
+---
+title: "ActiveDriverWGS Analysis"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+# 1. Visualization of ActiveDriverWGS result with two different annotation
+### 1.1 Package loading
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(reshape2)
+```
+
+### 1.2 Data loading and Count calculation
+###### 1.2.1 Annotation = ENCODE
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Load ActiveDriverWGS result (annotation = ENCODE)
+rawdata <- read_tsv("PCAWG_OvCa_merged_hg19_all_annotation.txt") %>%
+  mutate(chr = factor(chr, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  arrange(chr) %>%
+  mutate(annotation = replace(annotation, annotation == "Transcr_Hoffman", "Transcribed_Hoffman"))
+
+# Load total count data  (annotation = ENCODE)
+annotation_total_count <- read_tsv("PCAWG_annotation_total_count.txt")
+
+# Calculate the count
+result_encode_p_value_05 <- rawdata %>%
+  group_by(chr, annotation) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  inner_join(annotation_total_count, by=c('chr'='chr', 'annotation'='annotation')) %>%
+  mutate(percentage = count / total_count * 100) %>%
+  mutate(chr = factor(chr, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  #arrange(chr, desc(percentage))
+  arrange(chr)
+
+
+result_encode_p_value_05 <- result_encode_p_value_05 %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_3_UCSC", "3' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_5_UCSC", "5' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "Coding_UCSC", "Coding")) %>%
+  mutate(annotation = replace(annotation, annotation == "Conserved_LindbladToh", "Conserved")) %>%
+  mutate(annotation = replace(annotation, annotation == "CTCF_Hoffman", "CTCF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DGF_ENCODE", "DGF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_peaks_Trynka", "DHS peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_Trynka", "DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Andersson", "Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Hoffman", "FANTOM5 Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "FetalDHS_Trynka", "Fetal DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_Hnisz", "H3K27ac (Hnisz)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_PGC2", "H3K27ac (PGC2)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_peaks_Trynka", "H3K4me1 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_Trynka", "H3K4me1")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_peaks_Trynka", "H3K4me3 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_Trynka", "H3K4me3")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_peaks_Trynka", "H3K9ac peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_Trynka", "H3K9ac")) %>%
+  mutate(annotation = replace(annotation, annotation == "Intron_UCSC", "Intron")) %>%
+  mutate(annotation = replace(annotation, annotation == "Promoter_UCSC", "Promoter")) %>%
+  mutate(annotation = replace(annotation, annotation == "PromoterFlanking_Hoffman", "Promoter Flanking")) %>%
+  mutate(annotation = replace(annotation, annotation == "Repressed_Hoffman", "Repressed")) %>%
+  mutate(annotation = replace(annotation, annotation == "SuperEnhancer_Hnisz", "Super Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "TFBS_ENCODE", "TFBS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Transcribed_Hoffman", "Transcribed")) %>%
+  mutate(annotation = replace(annotation, annotation == "TSS_Hoffman", "TSS")) %>%
+  mutate(annotation = replace(annotation, annotation == "WeakEnhancer_Hoffman", "Weak Enhancer")) %>%
+  filter(annotation != "H3K9ac peaks") %>%
+  filter(annotation != "H3K4me3 peaks") %>%
+  filter(annotation != "H3K4me1 peaks")
+
+
+```
+
+###### 1.2.2 Annotation = State x Subtype
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Load ActiveDriverWGS result (annotation = State x Subtype)
+rawdata_7states <- read_tsv("All_element_merged_hg19_7states.txt") %>%
+  mutate(chr = factor(chr, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  separate(chromatin_state, into = c("cell_type", "state"), sep = ":", remove = FALSE) %>%
+  arrange(chr) %>%
+  select(!c('site_muts_obs', 'site_muts_exp', 'site_enriched', 'has_site_mutations')) %>%
+  filter(element_muts_obs >= 3)
+
+# Load total count data (annotation = State x Subtype)
+state_total_count <- read_tsv("PCAWG_state_total_count.txt") %>%
+  mutate(
+    chromatin_state =  str_replace_all(chromatin_state, c(
+      "E1" = "Weak_Promoter",
+      "E2" = "Active_Promoter",
+      "E3" = "Active_Region",
+      "E4" = "Active_Enhancer",
+      "E5" = "Weak_Enhancer",
+      "E6" = "Insulator",
+      "E7" = "Transcribed"))
+    ) %>%
+  separate(chromatin_state, into = c("cell_type", "state"), sep = ":", remove = FALSE) %>%
+  group_by(chr, state) %>%
+  summarise(total_count = sum(total_count),
+            .groups = 'drop')
+
+# Calculate the count
+result_states_p_value_05 <- rawdata_7states %>%
+  group_by(chr, state) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  inner_join(state_total_count, by=c('chr'='chr', 'state'='state')) %>%
+  mutate(percentage = count / total_count * 100) %>%
+  mutate(chr = factor(chr, levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  #arrange(chr, desc(percentage))
+  arrange(chr)
+
+```
+
+
+### 1.3 Heatmap plotting
+###### 1.3.1 Annotation = ENCODE
+```{r}
+ggplot(result_encode_p_value_05, aes(x = chr, y = annotation, fill = percentage)) + 
+  geom_tile() + 
+  scale_fill_gradient(low = "white", high = "red", na.value="white") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  theme(legend.position = "bottom") +
+  scale_y_discrete(limits=rev) +
+  coord_equal()
+
+```
+
+###### 1.3.2 Annotation = State x Subtype
+```{r}
+ggplot(result_states_p_value_05, aes(x = chr, y = state, fill = percentage)) + 
+  geom_tile() + 
+  scale_fill_gradient(low = "white", high = "red", na.value="blue") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  theme(panel.background = element_rect(fill = "white")) +
+  theme(legend.position = "bottom") +
+  scale_y_discrete(limits=rev) +
+  coord_equal()
+
+```
+
+# 2. Intersect the ActiveDriverWGS result with 33 germline risk loci
+### 2.1 Data loading
+#### 2.1.1 Risk loci region data loading
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+locus_region <- read_table("OCACFineMapping_ST5_RegionsOnly_May2023.txt") %>%
+  separate_wider_delim("Region", "_", names = c("chr", "start", "end")) %>%
+  
+  mutate(
+    Histotype =  str_replace_all(Histotype, c(
+      "all_non_mucinous" = "NMOC",
+      "endometrioid" = "ENOC",
+      "mucinous_all" = "MOC",
+      "ser_lg_lmp" = "LGSOC",
+      "serous_hg_extra" = "HGSOC")
+      )) %>%
+  
+  mutate(chr = factor(str_replace(chr, '^', 'chr'), levels = paste0("chr", c(1:22, "X", "Y")))) %>%
+  mutate(start = as.numeric(start), end = as.numeric(end)) %>%
+  group_by(chr, start, end) %>%
+  summarize(Histotype = paste(Histotype, collapse = ", "), .groups = 'drop' ) %>%
+  ungroup() %>%
+  arrange(chr)
+
+```
+#### 2.1.2 Bed files data loading as background
+###### 2.1.2.1 Annotation = ENCODE
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+beddata <- read_tsv("all_bed_files_with_annotation.txt")
+```
+###### 2.1.2.2 Annotation = State x Subtype
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+beddata_7states <- read_tsv("all_bed_files_with_state.txt") %>%
+  mutate(
+    chromatin_state =  str_replace_all(chromatin_state, c(
+      "E1" = "Weak_Promoter",
+      "E2" = "Active_Promoter",
+      "E3" = "Active_Region",
+      "E4" = "Active_Enhancer",
+      "E5" = "Weak_Enhancer",
+      "E6" = "Insulator",
+      "E7" = "Transcribed")
+    )) %>%
+  separate(chromatin_state, into = c("cell_type", "state"), sep = ":", remove = FALSE)
+
+```
+
+### 2.2 Filter out those not in risk loci region data
+###### 2.2.1 Annotation = ENCODE
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Count data
+for (i in 1:nrow(locus_region)) {
+  # Set up variables row-by-row
+  locus_chr <- locus_region[i, 1]
+  locus_chr <- as.character(locus_chr)
+  chr_num <- paste(c("chr", locus_chr), collapse = "")
+  
+  locus_start <- locus_region[i, 2]
+  locus_start <- as.numeric(locus_start)
+  
+  locus_end <- locus_region[i, 3]
+  locus_end <- as.numeric(locus_end)
+  
+  locus_name <- paste(c(locus_chr, locus_start, locus_end), collapse = "_")
+  
+  # Perform operations using the variables
+  if (i == 1L){
+    encode_risk_loci <- rawdata %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      group_by(annotation) %>%
+      summarise(count = n()) %>%
+      rename(!!locus_name:=count)
+   } else {
+     encode_risk_loci_add <- rawdata %>%
+       filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+       group_by(annotation) %>%
+       summarise(count = n()) %>%
+       rename(!!locus_name:=count)
+     encode_risk_loci <- full_join(encode_risk_loci, encode_risk_loci_add, by="annotation")
+   }
+  
+  # Print the values of the variables
+  #print(paste(locus_chr, locus_start, locus_end))
+}
+
+remove(encode_risk_loci_add)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Background data
+for (i in 1:nrow(locus_region)) {
+  # Set up variables row-by-row
+  locus_chr <- locus_region[i, 1]
+  locus_chr <- as.character(locus_chr)
+  chr_num <- paste(c("chr", locus_chr), collapse = "")
+  
+  locus_start <- locus_region[i, 2]
+  locus_start <- as.numeric(locus_start)
+  
+  locus_end <- locus_region[i, 3]
+  locus_end <- as.numeric(locus_end)
+  
+  locus_name <- paste(c(locus_chr, locus_start, locus_end), collapse = "_")
+  
+  # Perform operations using the variables
+  if (i == 1L){
+    encode_risk_loci_background <- beddata %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      group_by(annotation) %>%
+      summarise(count = n()) %>%
+      rename(!!locus_name:=count)
+  } else {
+    encode_risk_loci_background_add <- beddata %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      group_by(annotation) %>%
+      summarise(count = n()) %>%
+      rename(!!locus_name:=count)
+    encode_risk_loci_background <- full_join(encode_risk_loci_background, encode_risk_loci_background_add, by="annotation")
+  }
+  
+  # Print the values of the variables
+  #print(paste(locus_chr, locus_start, locus_end))
+}
+
+remove(encode_risk_loci_background_add)
+
+encode_risk_loci_background <- encode_risk_loci_background %>%
+  filter(!annotation == c("Coding_UCSC_hg38", "Coding_UCSC_unmapped")) %>%
+  arrange(annotation)
+
+```
+
+###### 2.2.2 Annotation = State x Subtype
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Count data
+for (i in 1:nrow(locus_region)) {
+  # Set up variables row-by-row
+  locus_chr <- locus_region[i, 1]
+  locus_chr <- as.character(locus_chr)
+  chr_num <- paste(c("chr", locus_chr), collapse = "")
+  
+  locus_start <- locus_region[i, 2]
+  locus_start <- as.numeric(locus_start)
+  
+  locus_end <- locus_region[i, 3]
+  locus_end <- as.numeric(locus_end)
+  
+  locus_name <- paste(c(locus_chr, locus_start, locus_end), collapse = "_")
+  
+  # Perform operations using the variables
+  if (i == 1L){
+    states_risk_loci <- rawdata_7states %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      group_by(state) %>%
+      summarise(count = n()) %>%
+      rename(!!locus_name:=count)
+  } else {
+    states_risk_loci_add <- rawdata_7states %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      group_by(state) %>%
+      summarise(count = n()) %>%
+      rename(!!locus_name:=count)
+    states_risk_loci <- full_join(states_risk_loci, states_risk_loci_add, by="state")
+  }
+  
+  # Print the values of the variables
+  #print(paste(locus_chr, locus_start, locus_end))
+}
+remove(states_risk_loci_add)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Background data
+for (i in 1:nrow(locus_region)) {
+  # Set up variables row-by-row
+  locus_chr <- locus_region[i, 1]
+  locus_chr <- as.character(locus_chr)
+  chr_num <- paste(c("chr", locus_chr), collapse = "")
+  
+  locus_start <- locus_region[i, 2]
+  locus_start <- as.numeric(locus_start)
+  
+  locus_end <- locus_region[i, 3]
+  locus_end <- as.numeric(locus_end)
+  
+  locus_name <- paste(c(locus_chr, locus_start, locus_end), collapse = "_")
+  
+  # Perform operations using the variables
+  if (i == 1L){
+    states_risk_loci_background <- beddata_7states %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      group_by(state) %>%
+      summarise(count = n()) %>%
+      rename(!!locus_name:=count)
+  } else {
+    states_risk_loci_background_add <- beddata_7states %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      group_by(state) %>%
+      summarise(count = n()) %>%
+      rename(!!locus_name:=count)
+    states_risk_loci_background <- full_join(states_risk_loci_background, states_risk_loci_background_add, by="state")
+  }
+  
+  # Print the values of the variables
+  #print(paste(locus_chr, locus_start, locus_end))
+}
+
+remove(states_risk_loci_background_add)
+
+```
+
+### 2.3 Percentage calculation
+###### 2.3.1 Annotation = ENCODE
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Arrange the annotation
+encode_risk_loci <- encode_risk_loci %>%
+  arrange(annotation)
+
+encode_risk_loci_background <- encode_risk_loci_background %>%
+  arrange(annotation)
+
+
+# Calculate the percentage
+result_encode_risk_loci_count_pct <- cbind(encode_risk_loci[1], round(encode_risk_loci[-1]/encode_risk_loci_background[-1],20) * 100)
+result_encode_risk_loci_count_pct_reshape <- melt(data = result_encode_risk_loci_count_pct,
+                id.vars = "annotation",
+                variable.name = "region",
+                value.name = "percentage")
+
+result_encode_risk_loci_count_pct_reshape <- result_encode_risk_loci_count_pct_reshape %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_3_UCSC", "3' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_5_UCSC", "5' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "Coding_UCSC", "Coding")) %>%
+  mutate(annotation = replace(annotation, annotation == "Conserved_LindbladToh", "Conserved")) %>%
+  mutate(annotation = replace(annotation, annotation == "CTCF_Hoffman", "CTCF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DGF_ENCODE", "DGF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_peaks_Trynka", "DHS peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_Trynka", "DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Andersson", "Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Hoffman", "FANTOM5 Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "FetalDHS_Trynka", "Fetal DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_Hnisz", "H3K27ac (Hnisz)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_PGC2", "H3K27ac (PGC2)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_peaks_Trynka", "H3K4me1 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_Trynka", "H3K4me1")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_peaks_Trynka", "H3K4me3 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_Trynka", "H3K4me3")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_peaks_Trynka", "H3K9ac peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_Trynka", "H3K9ac")) %>%
+  mutate(annotation = replace(annotation, annotation == "Intron_UCSC", "Intron")) %>%
+  mutate(annotation = replace(annotation, annotation == "Promoter_UCSC", "Promoter")) %>%
+  mutate(annotation = replace(annotation, annotation == "PromoterFlanking_Hoffman", "Promoter Flanking")) %>%
+  mutate(annotation = replace(annotation, annotation == "Repressed_Hoffman", "Repressed")) %>%
+  mutate(annotation = replace(annotation, annotation == "SuperEnhancer_Hnisz", "Super Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "TFBS_ENCODE", "TFBS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Transcribed_Hoffman", "Transcribed")) %>%
+  mutate(annotation = replace(annotation, annotation == "TSS_Hoffman", "TSS")) %>%
+  mutate(annotation = replace(annotation, annotation == "WeakEnhancer_Hoffman", "Weak Enhancer")) %>%
+  filter(annotation != "H3K9ac peaks") %>%
+  filter(annotation != "H3K4me3 peaks") %>%
+  filter(annotation != "H3K4me1 peaks")
+  
+
+```
+
+###### 2.3.2 Annotation = State x Subtype
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Arrange the states
+states_risk_loci <- states_risk_loci %>%
+  arrange(state)
+
+states_risk_loci_background <- states_risk_loci_background %>%
+  arrange(state)
+
+
+# Calculate the percentage
+result_states_risk_loci_count_pct <- cbind(states_risk_loci[1], round(states_risk_loci[-1]/states_risk_loci_background[-1],20) * 100)
+result_states_risk_loci_count_pct_reshape <- melt(data = result_states_risk_loci_count_pct,
+                                              id.vars = "state",
+                                              variable.name = "region",
+                                              value.name = "percentage")
+
+```
+
+### 2.4 Heatmap plotting
+###### 2.4.1 Annotation = ENCODE
+```{r}
+# ggplot(result_encode_risk_loci_count_pct_reshape, aes(x = region, y = annotation, fill = percentage)) + 
+#   geom_tile() + 
+#   scale_fill_gradient(low = "white", high = "red", na.value="white") + 
+#   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+#   theme(legend.position = "bottom") +
+#   coord_equal()
+
+ggplot(result_encode_risk_loci_count_pct_reshape, aes(x = region, y = annotation, fill = percentage)) + 
+  geom_tile() + 
+  scale_fill_gradient(low = "white", high = "red", na.value="white") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  theme(legend.position = "bottom") +
+  scale_y_discrete(limits=rev) +
+  coord_equal()
+
+```
+
+###### 2.4.2 Annotation = State x Subtype
+```{r}
+ggplot(result_states_risk_loci_count_pct_reshape, aes(x = region, y = state, fill = percentage)) + 
+  geom_tile() + 
+  scale_fill_gradient(low = "white", high = "red", na.value="white") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  theme(legend.position = "bottom") +
+  scale_y_discrete(limits=rev) +
+  coord_equal()
+
+
+test_1 <- rawdata_7states %>%
+  filter(chr == "chr9" & pos1 >= 106412892 & pos2 <= 107412892) %>%
+  filter(state == "Insulator")
+
+test_2 <- rawdata_7states %>%
+  filter(chr == "chr21" & pos1 >= 35580398 & pos2 <= 36580398) %>%
+  filter(state == "Active_Promoter")
+```
+
+
+
+### 2.5 Histogram plotting for annotation
+
+##### 2.5.0 Data filteration and Count calculation (ENCODE)
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Count data
+for (i in 1:nrow(locus_region)) {
+  # Set up variables row-by-row
+  locus_chr <- locus_region[i, 1]
+  locus_chr <- as.character(locus_chr)
+  chr_num <- paste(c("chr", locus_chr), collapse = "")
+  
+  locus_start <- locus_region[i, 2]
+  locus_start <- as.numeric(locus_start)
+  
+  locus_end <- locus_region[i, 3]
+  locus_end <- as.numeric(locus_end)
+  
+  locus_name <- paste(c(locus_chr, locus_start, locus_end), collapse = "_")
+  
+  # Perform operations using the variables
+  if (i == 1L){
+    rawdata_risk_loci <- rawdata %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      mutate(risk_loci = locus_name)
+   } else {
+     rawdata_risk_loci_add <- rawdata %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      mutate(risk_loci = locus_name)
+     
+    rawdata_risk_loci <- rawdata_risk_loci %>%
+      add_row(rawdata_risk_loci_add)
+   }
+  
+  # Print the values of the variables
+  #print(paste(locus_chr, locus_start, locus_end))
+}
+
+remove(rawdata_risk_loci_add)
+
+write.table(rawdata_risk_loci, "rawdata_encode_risk_loci_20240301.txt",sep="\t",quote=F,row.names=F)
+```
+
+##### 2.5.1 Data filteration and Count calculation (State x Subtype)
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Filter the data within the rick loci region
+for (i in 1:nrow(locus_region)) {
+  # Set up variables row-by-row
+  locus_chr <- locus_region[i, 1]
+  locus_chr <- as.character(locus_chr)
+  chr_num <- paste(c("chr", locus_chr), collapse = "")
+  
+  locus_start <- locus_region[i, 2]
+  locus_start <- as.numeric(locus_start)
+  
+  locus_end <- locus_region[i, 3]
+  locus_end <- as.numeric(locus_end)
+  
+  locus_name <- paste(c(locus_chr, locus_start, locus_end), collapse = "_")
+  
+  # Perform operations using the variables
+  if (i == 1L){
+    rawdata_7states_risk_loci <- rawdata_7states %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      mutate(risk_loci = locus_name)
+      #unite(region, c(chr, pos1, pos2), sep = "_")
+  } else {
+    rawdata_7states_risk_loci_add <- rawdata_7states %>%
+      filter(chr == chr_num & pos1 >= locus_start & pos2 <= locus_end) %>%
+      #unite(region, c(chr, pos1, pos2), sep = "_")
+      mutate(risk_loci = locus_name)
+    
+    rawdata_7states_risk_loci <- rawdata_7states_risk_loci %>%
+      add_row(rawdata_7states_risk_loci_add)
+  }
+  
+  # Print the values of the variables
+  #print(paste(locus_chr, locus_start, locus_end))
+}
+
+remove(rawdata_7states_risk_loci_add)
+
+# Create a list of cell type and state as the column name of the table
+cell_type_seq <- c("FT", "IOSE", "HGSOC", "LGSOC", "CCOC", "EEC", "MOC")
+state_seq <- c("Weak_Enhancer", "Transcribed", "Active_Enhancer", "Active_Region", "Insulator", "Active_Promoter", "Weak_Promoter")
+
+#write.table(rawdata_7states_risk_loci, "rawdata_7states_risk_loci_121.txt",sep="\t",quote=F,row.names=F)
+# Separate the chromatin states into state and cell_type
+states_risk_loci_histogram <- rawdata_7states_risk_loci %>%
+  group_by(chromatin_state) %>%
+  summarise(count = n()) %>%
+  separate(chromatin_state, into = c("cell_type", "state"), sep = ":", remove = FALSE) %>%
+  mutate(state = factor(state, levels = state_seq)) %>%
+  mutate(cell_type = factor(cell_type, levels = cell_type_seq))
+
+```
+
+##### 2.5.2 Histogram plotting
+```{r}
+ggplot(data = states_risk_loci_histogram, aes(x = cell_type, y = count)) +
+  geom_histogram(stat = "identity", width = 1, fill = "darkgrey") +
+  facet_wrap( ~ state, strip.position = "bottom", scales = "free_x") +
+  labs(x = "Chromatin State", y = "# of frequent mutated element") +
+  theme(axis.text.x = element_text(angle = 70, vjust = 1, hjust = 1), 
+        panel.background = element_rect(fill = "white"))
+
+```
+
+
+# 3. Rerun the ActiveDriverWGS analysis (441 samples) with Transcription Factor data
+### 3.1 Concatenate the TFs within same region
+```{r}
+# Load and organize the ActiveDriverWGS result with TF data
+rawdata_7states_risk_loci <- read_tsv("rawdata_7states_risk_loci_121.txt") %>%
+  select(c(chr, pos1, pos2, chromatin_state, risk_loci))
+
+
+# Load and organize the ActiveDriverWGS result with TF data
+result_with_site <- read_tsv("all_PCAWG.ovary_State_Result_in_Risk_Loci_activeDriver.txt") %>%
+  separate(id, into = c("region", "note"), sep = ":", remove = TRUE) %>%
+  separate(region, into = c("chr", "pos1", "pos2"), sep = "_", remove = TRUE) %>%
+  select(!note) %>%
+  mutate_at(c("pos1", "pos2"), as.numeric) %>%
+  inner_join(rawdata_7states_risk_loci, by=c("chr" = "chr", "pos1" = "pos1", "pos2" = "pos2")) %>%
+  relocate(chromatin_state, .after = pos2) %>%
+  relocate(risk_loci) %>%
+  filter(element_muts_obs >= 3)
+
+
+# Concatenate the TFs with the same positions
+tf_calculation <- aggregate(TF ~ pos1, result_with_site, FUN = function(x) paste(x, collapse = ","))
+#write.csv(result_with_site, "result_with_site.csv")
+
+```
+
+```{r}
+# Data with site mutation
+result_with_site_mutation <- result_with_site %>%
+  filter(has_site_mutations == "V")
+
+# Export the result into csv file
+write.csv(result_with_site_mutation, "result_with_site_mutation.csv")
+```
+
+# 3.2 Rerun the ActiveDriverWGS analysis (5936 samples) with Transcription Factor data
+### 3.2.1 Concatenate the TFs within same region
+```{r}
+rawdata_risk_loci <- read_tsv("rawdata_encode_risk_loci_20240301.txt") %>%
+  select(!c(fdr_element, p_value))
+
+
+# Load and organize the ActiveDriverWGS result with TF data
+encode_result_with_site <- read_tsv("all_PCAWG.ovary_Encode_Result_in_Risk_Loci_ActiveDriverWGS.txt") %>%
+  separate(id, into = c("region", "note"), sep = ":", remove = TRUE) %>%
+  separate(region, into = c("chr", "pos1", "pos2"), sep = "_", remove = TRUE) %>%
+  select(!note) %>%
+  mutate_at(c("pos1", "pos2"), as.numeric) %>%
+  inner_join(rawdata_risk_loci, by=c("chr" = "chr", "pos1" = "pos1", "pos2" = "pos2")) %>%
+  relocate(annotation, .after = pos2) %>%
+  relocate(risk_loci) %>%
+  filter(element_muts_obs >= 3)
+
+# Concatenate the TFs with the same positions
+tf_calculation <- encode_result_with_site %>%
+  unite(col = "location", c(chr, pos1, pos2), sep = "_") %>%
+  aggregate(TF ~ location, FUN = function(x) paste(x, collapse = ","))
+#write.csv(result_with_site, "result_with_site.csv")
+
+
+
+  
+```
+
+# 4. Summarize the data into supplementary tables
+### 4.1 Supplementary Table 4
+```{r}
+# 3A
+fig_3a <- result_encode_p_value_05 %>%
+  mutate(Annotation.Category = "ENCODE") %>%
+  relocate(Annotation.Category) %>%
+  relocate(Annotation.Name = annotation, .after = Annotation.Category) %>%
+  relocate(Chromosome = chr, .after = Annotation.Name) %>%
+  relocate(Count = count, .after = Chromosome) %>%
+  relocate(Total.Count = total_count, .after = Count) %>%
+  relocate(Percentage = percentage, .after = Total.Count)
+
+# 3C
+fig_3c <- result_states_p_value_05 %>%
+  mutate(Annotation.Category = "Chromatin_State") %>%
+  relocate(Annotation.Category) %>%
+  relocate(Annotation.Name = state, .after = Annotation.Category) %>%
+  relocate(Chromosome = chr, .after = Annotation.Name) %>%
+  relocate(Count = count, .after = Chromosome) %>%
+  relocate(Total.Count = total_count, .after = Count) %>%
+  relocate(Percentage = percentage, .after = Total.Count)
+
+# 3A + 3C
+fig_3_chromosome_result <- bind_rows(list(fig_3a, fig_3c))
+write.table(fig_3_chromosome_result, "chromosome_count_pct.txt",sep="\t",quote=F,row.names=F)
+```
+
+
+```{r}
+
+fig_3a_summarized <- fig_3a %>%
+  group_by(Annotation.Name) %>%
+  summarise(count = sum(Count), total.count = sum(Total.Count)) %>%
+  mutate(Percentage = count / total.count * 100) %>%
+  rename(Count = count, Total.Count = total.count) %>%
+  mutate(Annotation.Category = "ENCODE") %>%
+  relocate(Annotation.Category)
+
+
+fig_3c_summarized <- fig_3c %>%
+  group_by(Annotation.Name) %>%
+  summarise(count = sum(Count), total.count = sum(Total.Count)) %>%
+  mutate(Percentage = count / total.count * 100) %>%
+  rename(Count = count, Total.Count = total.count) %>%
+  mutate(Annotation.Category = "Chromatin_State") %>%
+  relocate(Annotation.Category)
+
+fig_3_summarized_chromosome_result <- bind_rows(list(fig_3a_summarized, fig_3c_summarized))
+write.table(fig_3_summarized_chromosome_result, "summarized.chromosome_count_pct.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+### 4.2 Supplementary Table 5
+```{r}
+#Summarizing tables 3B & 3D
+
+# ENCODE (3B)
+encode_risk_loci_reshape <- melt(data = encode_risk_loci,
+                                 id.vars = "annotation",
+                                 variable.name = "region",
+                                 value.name = "percentage") %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_3_UCSC", "3' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_5_UCSC", "5' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "Coding_UCSC", "Coding")) %>%
+  mutate(annotation = replace(annotation, annotation == "Conserved_LindbladToh", "Conserved")) %>%
+  mutate(annotation = replace(annotation, annotation == "CTCF_Hoffman", "CTCF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DGF_ENCODE", "DGF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_peaks_Trynka", "DHS peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_Trynka", "DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Andersson", "Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Hoffman", "FANTOM5 Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "FetalDHS_Trynka", "Fetal DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_Hnisz", "H3K27ac (Hnisz)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_PGC2", "H3K27ac (PGC2)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_peaks_Trynka", "H3K4me1 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_Trynka", "H3K4me1")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_peaks_Trynka", "H3K4me3 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_Trynka", "H3K4me3")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_peaks_Trynka", "H3K9ac peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_Trynka", "H3K9ac")) %>%
+  mutate(annotation = replace(annotation, annotation == "Intron_UCSC", "Intron")) %>%
+  mutate(annotation = replace(annotation, annotation == "Promoter_UCSC", "Promoter")) %>%
+  mutate(annotation = replace(annotation, annotation == "PromoterFlanking_Hoffman", "Promoter Flanking")) %>%
+  mutate(annotation = replace(annotation, annotation == "Repressed_Hoffman", "Repressed")) %>%
+  mutate(annotation = replace(annotation, annotation == "SuperEnhancer_Hnisz", "Super Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "TFBS_ENCODE", "TFBS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Transcribed_Hoffman", "Transcribed")) %>%
+  mutate(annotation = replace(annotation, annotation == "TSS_Hoffman", "TSS")) %>%
+  mutate(annotation = replace(annotation, annotation == "WeakEnhancer_Hoffman", "Weak Enhancer")) %>%
+  filter(annotation != "H3K9ac peaks") %>%
+  filter(annotation != "H3K4me3 peaks") %>%
+  filter(annotation != "H3K4me1 peaks") %>%
+  replace(is.na(.), 0) %>%
+  rename(count = percentage)
+
+
+encode_risk_loci_background_reshape <- melt(data = encode_risk_loci_background,
+                                            id.vars = "annotation",
+                                            variable.name = "region",
+                                            value.name = "percentage") %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_3_UCSC", "3' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_5_UCSC", "5' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "Coding_UCSC", "Coding")) %>%
+  mutate(annotation = replace(annotation, annotation == "Conserved_LindbladToh", "Conserved")) %>%
+  mutate(annotation = replace(annotation, annotation == "CTCF_Hoffman", "CTCF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DGF_ENCODE", "DGF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_peaks_Trynka", "DHS peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_Trynka", "DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Andersson", "Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Hoffman", "FANTOM5 Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "FetalDHS_Trynka", "Fetal DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_Hnisz", "H3K27ac (Hnisz)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_PGC2", "H3K27ac (PGC2)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_peaks_Trynka", "H3K4me1 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_Trynka", "H3K4me1")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_peaks_Trynka", "H3K4me3 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_Trynka", "H3K4me3")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_peaks_Trynka", "H3K9ac peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_Trynka", "H3K9ac")) %>%
+  mutate(annotation = replace(annotation, annotation == "Intron_UCSC", "Intron")) %>%
+  mutate(annotation = replace(annotation, annotation == "Promoter_UCSC", "Promoter")) %>%
+  mutate(annotation = replace(annotation, annotation == "PromoterFlanking_Hoffman", "Promoter Flanking")) %>%
+  mutate(annotation = replace(annotation, annotation == "Repressed_Hoffman", "Repressed")) %>%
+  mutate(annotation = replace(annotation, annotation == "SuperEnhancer_Hnisz", "Super Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "TFBS_ENCODE", "TFBS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Transcribed_Hoffman", "Transcribed")) %>%
+  mutate(annotation = replace(annotation, annotation == "TSS_Hoffman", "TSS")) %>%
+  mutate(annotation = replace(annotation, annotation == "WeakEnhancer_Hoffman", "Weak Enhancer")) %>%
+  filter(annotation != "H3K9ac peaks") %>%
+  filter(annotation != "H3K4me3 peaks") %>%
+  filter(annotation != "H3K4me1 peaks") %>%
+  replace(is.na(.), 0) %>%
+  rename(total_count = percentage)
+
+
+new_encode_risk_loci_pct <- encode_risk_loci_reshape %>%
+  inner_join(encode_risk_loci_background_reshape, by=c('annotation'='annotation', 'region'='region')) %>%
+  mutate(percentage = count / total_count * 100)
+
+
+
+  
+#STATE (3D)
+states_risk_loci_reshape <- melt(data = states_risk_loci,
+                                 id.vars = "state",
+                                 variable.name = "region",
+                                 value.name = "percentage") %>%
+  replace(is.na(.), 0) %>%
+  rename(count = percentage)
+
+states_risk_loci_background_reshape <- melt(data = states_risk_loci_background,
+                                              id.vars = "state",
+                                              variable.name = "region",
+                                              value.name = "percentage") %>%
+  replace(is.na(.), 0) %>%
+  rename(total_count = percentage)
+
+new_state_risk_loci_pct <- states_risk_loci_reshape %>%
+  inner_join(states_risk_loci_background_reshape, by=c('state'='state', 'region'='region')) %>%
+  mutate(percentage = count / total_count * 100)
+
+
+fig_3b <- new_encode_risk_loci_pct %>%
+  mutate(Annotation.Category = "ENCODE") %>%
+  relocate(Annotation.Category) %>%
+  relocate(Annotation.Name = annotation, .after = Annotation.Category) %>%
+  relocate(Risk.Loci.Region = region, .after = Annotation.Name) %>%
+  relocate(Count = count, .after = Risk.Loci.Region) %>%
+  relocate(Total.Count = total_count, .after = Count) %>%
+  relocate(Percentage = percentage, .after =Total.Count)
+
+
+fig_3d <- new_state_risk_loci_pct %>%
+  mutate(Annotation.Category = "Chromatin_State") %>%
+  relocate(Annotation.Category) %>%
+  relocate(Annotation.Name = state, .after = Annotation.Category) %>%
+  relocate(Risk.Loci.Region = region, .after = Annotation.Name) %>%
+  relocate(Count = count, .after = Risk.Loci.Region) %>%
+  relocate(Total.Count = total_count, .after = Count) %>%
+  relocate(Percentage = percentage, .after = Total.Count)
+
+# 3B + 3D
+fig_3_risk_loci_result <- bind_rows(list(fig_3b, fig_3d)) %>%
+  mutate(Cytoband = case_when(
+  Risk.Loci.Region == "1_37582122_38582122" ~ "1p34.3",
+  Risk.Loci.Region == "2_111287853_112287853" ~ "2q13b",
+  Risk.Loci.Region == "2_113479364_114479364" ~ "2q13a",
+  Risk.Loci.Region == "2_120646501_121646501" ~ "2q14.2",
+  Risk.Loci.Region == "2_176036754_178036754" ~ "2q31.1",
+  Risk.Loci.Region == "3_138349543_139349543" ~ "3q23",
+  Risk.Loci.Region == "3_155902487_156902487" ~ "3q25.31",
+  Risk.Loci.Region == "3_190031882_191031882" ~ "3q28",
+  Risk.Loci.Region == "4_70105006_71105006" ~ "4q13.3",
+  Risk.Loci.Region == "4_166687046_167687046" ~ "4q32.3",
+  Risk.Loci.Region == "5_783755_1783755" ~ "5p15.33",
+  Risk.Loci.Region == "5_53976556_54976556" ~ "5q11.2",
+  Risk.Loci.Region == "5_65625696_66625696" ~ "5q12.3",
+  Risk.Loci.Region == "8_76644363_77644363" ~ "8q21.11",
+  Risk.Loci.Region == "8_82153644_83153644" ~ "8q21.13",
+  Risk.Loci.Region == "8_127500000_130200000" ~ "8q24.21",
+  Risk.Loci.Region == "9_16414716_17414716" ~ "9p22.2",
+  Risk.Loci.Region == "9_18530883_19530883" ~ "9p22.1",
+  Risk.Loci.Region == "9_104443226_105443226" ~ "9q31.1",
+  Risk.Loci.Region == "9_106412892_107412892" ~ "9q31.1",
+  Risk.Loci.Region == "9_135655000_136655000" ~ "9q34.2",
+  Risk.Loci.Region == "10_21321274_22321274" ~ "10p12.31",
+  Risk.Loci.Region == "10_105194301_106194301" ~ "10q24.33",
+  Risk.Loci.Region == "12_120903724_121903724" ~ "12q24.31",
+  Risk.Loci.Region == "15_91035329_92035329" ~ "15q26.1",
+  Risk.Loci.Region == "17_35600767_36600767" ~ "17q12",
+  Risk.Loci.Region == "17_4.3e+07_45500000" ~ "17q21.31",
+  Risk.Loci.Region == "17_45972432_46972432" ~ "17q21.32",
+  Risk.Loci.Region == "18_20925852_21925852" ~ "18q11.2",
+  Risk.Loci.Region == "19_16890291_17890291" ~ "19p13.11",
+  Risk.Loci.Region == "19_39238787_40238787" ~ "19q13.2",
+  Risk.Loci.Region == "21_35580398_36580398" ~ "21q22.12",
+  Risk.Loci.Region == "22_28434313_29434313" ~ "22q12.1"
+  )) %>%
+  relocate(Cytoband, .after = Annotation.Name)
+write.table(fig_3_risk_loci_result, "risk_loci_count_pct.txt",sep="\t",quote=F,row.names=F)
+
+
+
+fig_3b_summarized <- fig_3b %>%
+  group_by(Annotation.Name) %>%
+  summarise(count = sum(Count), total.count = sum(Total.Count)) %>%
+  mutate(Percentage = count / total.count * 100) %>%
+  rename(Count = count, Total.Count = total.count) %>%
+  mutate(Annotation.Category = "ENCODE") %>%
+  relocate(Annotation.Category)
+
+fig_3d_summarized <- fig_3d %>%
+  group_by(Annotation.Name) %>%
+  summarise(count = sum(Count), total.count = sum(Total.Count)) %>%
+  mutate(Percentage = count / total.count * 100) %>%
+  rename(Count = count, Total.Count = total.count) %>%
+  mutate(Annotation.Category = "Chromatin_State") %>%
+  relocate(Annotation.Category)
+
+fig_3_summarized_risk_loci_result <- bind_rows(list(fig_3b_summarized, fig_3d_summarized))
+write.table(fig_3_summarized_risk_loci_result, "summarized.risk_loci_count_pct.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+
+
+### 4.3 Supplementary Table 7
+```{r}
+# MotifBreakR result intersection
+motifbreakr_ori <- read.table("MotifBreakR_original_clean.txt", header = TRUE, sep="\t")
+
+# Encode
+motifbreakr_pos_encode <- read.table("motifbreakr_in_encode.txt", header = FALSE, sep="\t") %>%
+  rename(chromosome = V1, position = V2) %>%
+  inner_join(motifbreakr_ori, by=c("chromosome" = "chromosome", "position" = "pos"))
+write.table(motifbreakr_pos_encode, "motifbreakr_encode.txt",sep="\t",quote=F,row.names=F)
+
+
+# Chromatin State
+motifbreakr_pos_state <- read.table("motifbreakr_in_7states.txt", header = FALSE, sep="\t") %>%
+  rename(chromosome = V1, position = V2) %>%
+  inner_join(motifbreakr_ori, by=c("chromosome" = "chromosome", "position" = "pos"))
+write.table(motifbreakr_pos_state, "motifbreakr_state.txt",sep="\t",quote=F,row.names=F)
+
+
+# Grab the genes from both table
+motifbreakr_genes_all <- bind_rows(list(motifbreakr_pos_encode, motifbreakr_pos_state)) %>%
+  select(geneSymbol) %>%
+  distinct(geneSymbol, .keep_all = TRUE)
+#total = 215
+
+# Merge encode table and chromatin_state table into a table
+motifbreakr_pos_encode <- motifbreakr_pos_encode %>%
+  mutate(Annotation.Category = "ENCODE") %>%
+  relocate(Annotation.Category)
+
+motifbreakr_pos_state <- motifbreakr_pos_state %>%
+  mutate(Annotation.Category = "Chromatin_State") %>%
+  relocate(Annotation.Category)
+
+motifbreakr_all <- bind_rows(list(motifbreakr_pos_encode, motifbreakr_pos_state))
+write.table(motifbreakr_all, "motifbreakr_all.csv",sep=",",quote=F,row.names=F)
+```
+
+### 4.4 Supplementary Table 8
+```{r}
+# ActiveDriverWGS with TFBS result (ENCODE + Chromatin State) (ST8)
+result_with_site <- result_with_site %>%
+  mutate(Annotation.Category = "Chromatin_State") %>%
+  relocate(Annotation.Category) %>%
+  relocate(Annotation.Name = chromatin_state, .after = Annotation.Category) 
+
+encode_result_with_site <- encode_result_with_site %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_3_UCSC", "3' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "UTR_5_UCSC", "5' UTR")) %>%
+  mutate(annotation = replace(annotation, annotation == "Coding_UCSC", "Coding")) %>%
+  mutate(annotation = replace(annotation, annotation == "Conserved_LindbladToh", "Conserved")) %>%
+  mutate(annotation = replace(annotation, annotation == "CTCF_Hoffman", "CTCF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DGF_ENCODE", "DGF")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_peaks_Trynka", "DHS peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "DHS_Trynka", "DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Andersson", "Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "Enhancer_Hoffman", "FANTOM5 Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "FetalDHS_Trynka", "Fetal DHS")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_Hnisz", "H3K27ac (Hnisz)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K27ac_PGC2", "H3K27ac (PGC2)")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_peaks_Trynka", "H3K4me1 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me1_Trynka", "H3K4me1")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_peaks_Trynka", "H3K4me3 peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K4me3_Trynka", "H3K4me3")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_peaks_Trynka", "H3K9ac peaks")) %>%
+  mutate(annotation = replace(annotation, annotation == "H3K9ac_Trynka", "H3K9ac")) %>%
+  mutate(annotation = replace(annotation, annotation == "Intron_UCSC", "Intron")) %>%
+  mutate(annotation = replace(annotation, annotation == "Promoter_UCSC", "Promoter")) %>%
+  mutate(annotation = replace(annotation, annotation == "PromoterFlanking_Hoffman", "Promoter Flanking")) %>%
+  mutate(annotation = replace(annotation, annotation == "Repressed_Hoffman", "Repressed")) %>%
+  mutate(annotation = replace(annotation, annotation == "SuperEnhancer_Hnisz", "Super Enhancer")) %>%
+  mutate(annotation = replace(annotation, annotation == "TFBS_ENCODE", "TFBS")) %>%
+  mutate(annotation = replace(annotation, annotation == "Transcribed_Hoffman", "Transcribed")) %>%
+  mutate(annotation = replace(annotation, annotation == "TSS_Hoffman", "TSS")) %>%
+  mutate(annotation = replace(annotation, annotation == "WeakEnhancer_Hoffman", "Weak Enhancer")) %>%
+  mutate(Annotation.Category = "ENCODE") %>%
+  relocate(Annotation.Category) %>%
+  relocate(Annotation.Name = annotation, .after = Annotation.Category) 
+
+
+activedriverwgs_tf_all <- bind_rows(list(encode_result_with_site, result_with_site)) %>%
+  relocate(Risk.Loci.Region = risk_loci, .after = Annotation.Name) %>%
+  mutate(Cytoband = case_when(
+  Risk.Loci.Region == "1_37582122_38582122" ~ "1p34.3",
+  Risk.Loci.Region == "2_111287853_112287853" ~ "2q13b",
+  Risk.Loci.Region == "2_113479364_114479364" ~ "2q13a",
+  Risk.Loci.Region == "2_120646501_121646501" ~ "2q14.2",
+  Risk.Loci.Region == "2_176036754_178036754" ~ "2q31.1",
+  Risk.Loci.Region == "3_138349543_139349543" ~ "3q23",
+  Risk.Loci.Region == "3_155902487_156902487" ~ "3q25.31",
+  Risk.Loci.Region == "3_190031882_191031882" ~ "3q28",
+  Risk.Loci.Region == "4_70105006_71105006" ~ "4q13.3",
+  Risk.Loci.Region == "4_166687046_167687046" ~ "4q32.3",
+  Risk.Loci.Region == "5_783755_1783755" ~ "5p15.33",
+  Risk.Loci.Region == "5_53976556_54976556" ~ "5q11.2",
+  Risk.Loci.Region == "5_65625696_66625696" ~ "5q12.3",
+  Risk.Loci.Region == "8_76644363_77644363" ~ "8q21.11",
+  Risk.Loci.Region == "8_82153644_83153644" ~ "8q21.13",
+  Risk.Loci.Region == "8_127500000_130200000" ~ "8q24.21",
+  Risk.Loci.Region == "9_16414716_17414716" ~ "9p22.2",
+  Risk.Loci.Region == "9_18530883_19530883" ~ "9p22.1",
+  Risk.Loci.Region == "9_104443226_105443226" ~ "9q31.1",
+  Risk.Loci.Region == "9_106412892_107412892" ~ "9q31.1",
+  Risk.Loci.Region == "9_135655000_136655000" ~ "9q34.2",
+  Risk.Loci.Region == "10_21321274_22321274" ~ "10p12.31",
+  Risk.Loci.Region == "10_105194301_106194301" ~ "10q24.33",
+  Risk.Loci.Region == "12_120903724_121903724" ~ "12q24.31",
+  Risk.Loci.Region == "15_91035329_92035329" ~ "15q26.1",
+  Risk.Loci.Region == "17_35600767_36600767" ~ "17q12",
+  Risk.Loci.Region == "17_4.3e+07_45500000" ~ "17q21.31",
+  Risk.Loci.Region == "17_45972432_46972432" ~ "17q21.32",
+  Risk.Loci.Region == "18_20925852_21925852" ~ "18q11.2",
+  Risk.Loci.Region == "19_16890291_17890291" ~ "19p13.11",
+  Risk.Loci.Region == "19_39238787_40238787" ~ "19q13.2",
+  Risk.Loci.Region == "21_35580398_36580398" ~ "21q22.12",
+  Risk.Loci.Region == "22_28434313_29434313" ~ "22q12.1"
+  )) %>%
+  relocate(Cytoband, .after = Annotation.Name)
+
+write.table(activedriverwgs_tf_all, "activedriverwgs_tfbs_all.txt",sep="\t",quote=F,row.names=F)
+```
+
+# 5. Common TFBS identified from ActiveDriverWGS & MotifBreakR - Table 1
+```{r}
+
+activedriverwgs_genes_encode <- encode_result_with_site %>%
+  select(TF) %>%
+  distinct(TF, .keep_all = TRUE)
+  
+activedriverwgs_genes_state <- tfbs_7states_risk_loci %>%
+  select(TF) %>%
+  distinct(TF, .keep_all = TRUE)
+
+activedriverwgs_genes_all <- bind_rows(list(activedriverwgs_genes_encode, activedriverwgs_genes_state)) %>%
+  select(TF) %>%
+  distinct(TF, .keep_all = TRUE) 
+
+
+common_activedriverwgs_motifbreakr <- activedriverwgs_genes_all %>%
+  inner_join(motifbreakr_genes_all , by = c("TF" = "geneSymbol")) %>%
+  inner_join(activedriverwgs_tf_all, by=c("TF" = "TF")) %>%
+  select(c(TF, Annotation.Category, Annotation.Name, Cytoband, Risk.Loci.Region, chr, pos1, pos2, pp_element))
+write.table(common_activedriverwgs_motifbreakr, "common_tfs_activedriverwgs_motifbreakr.txt",sep="\t",quote=F,row.names=F)
+```
+
